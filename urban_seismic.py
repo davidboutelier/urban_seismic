@@ -21,15 +21,215 @@
  *                                                                         *
  ***************************************************************************/
 """
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
+
+from qgis.core import (
+    Qgis,
+    QgsVectorLayer,
+    QgsProject,
+    QgsMapLayerProxyModel,
+    QgsMessageLog
+)
+
+from qgis.gui import QgsFileWidget
 
 # Initialize Qt resources from file resources.py
 from .resources import *
 # Import the code for the dialog
 from .urban_seismic_dialog import UrbanSeismicDialog
 import os.path
+import geopandas as gpd
+import numpy as np
+from shapely.geometry import LineString, MultiLineString, Point
+import time
+
+
+proj_dict = {}
+
+
+class CMP(QObject):
+    global proj_dict
+    finished = pyqtSignal()
+    countChanged = pyqtSignal(int)
+
+    def run(self):
+        sp_layer = proj_dict['sp_layer'] 
+        rp_layer = proj_dict['rp_layer'] 
+        cmp_offset = proj_dict['cmp_offset'] 
+        cmp_file = proj_dict['cmp_file'] 
+        cmp_proj = proj_dict['cmp_proj'] 
+        load_cmp = proj_dict['load_cmp']
+
+        sp_layer_crs = sp_layer.crs().authid()
+        sp_features = sp_layer.getFeatures()
+        sp_gdf = gpd.GeoDataFrame.from_features(sp_features, crs = sp_layer_crs)
+
+        rp_layer_crs = rp_layer.crs().authid()
+        rp_features = rp_layer.getFeatures()
+        rp_gdf = gpd.GeoDataFrame.from_features(rp_features, crs = rp_layer_crs)
+
+        n_pairs = len(sp_gdf) * len(rp_gdf)
+        index = 0
+
+        CMP_list = []
+
+        for i in range(0, len(sp_gdf)):
+            SP = sp_gdf['geometry'].iloc[i]
+            for j in range(0, len(rp_gdf)):
+                RP = rp_gdf['geometry'].iloc[j]
+                distance = SP.distance(RP)
+                if distance < cmp_offset:
+                    this_CMP = Point(SP.x + 0.5*(RP.x - SP.x), SP.y + 0.5*(RP.y - SP.y))
+                    CMP_list.append(this_CMP)
+                    
+                index = index +1
+                percent = int(100 * index/n_pairs)
+                self.countChanged.emit(percent)
+
+        cmp_gdf = gpd.GeoDataFrame(geometry=CMP_list, crs = sp_layer_crs)
+        cmp_gdf.to_file(cmp_file)
+        
+        if load_cmp:
+            new_projected_points_layer = QgsVectorLayer(cmp_file, os.path.splitext(os.path.basename(cmp_file))[0], "ogr")
+            QgsProject.instance().addMapLayer(new_projected_points_layer)
+
+
+
+        self.finished.emit()
+
+class Projector(QObject):
+    global proj_dict
+    finished = pyqtSignal()
+    countChanged = pyqtSignal(int)
+
+
+    def run(self):
+
+        selected_point_layer = proj_dict['selected_point_layer']
+        selected_point_layer_CRS = selected_point_layer.crs().authid()
+        features = selected_point_layer.getFeatures()
+        points_df = gpd.GeoDataFrame.from_features(features, crs=selected_point_layer_CRS)
+
+        max_dist = proj_dict['max_dist']
+        search_inc = proj_dict['search_inc'] 
+        threshold = proj_dict['threshold'] 
+
+
+        multiline = proj_dict['selected_multiline_layer']
+        multiline_features = multiline.getFeatures()
+        multiline_crs = multiline.crs().authid()
+        multiline_df = gpd.GeoDataFrame.from_features(multiline_features, crs=multiline_crs)
+        this_multiline = multiline_df.geometry
+
+        outfile = proj_dict['outfile'] 
+        outfile_proj = proj_dict['proj_projected_points'] 
+        load_projected = proj_dict['load_points']
+
+
+        n_steps = int(max_dist/search_inc)
+
+        points = []
+        labels = []
+        distances = []
+
+        print(points_df['angle'].iloc[-1])
+        points_df['angle'].iloc[-1] = points_df['angle'].iloc[-2]
+
+
+        for i in range(0,len(points_df)):
+
+            this_point = points_df['geometry'].iloc[i]
+            this_label = points_df['Name'].iloc[i]
+            this_bearing = points_df['angle'].iloc[i] + np.pi/2
+            x0 = this_point.x
+            y0 = this_point.y
+
+            FIRST_POINT = False
+            SECOND_POINT = False
+
+            incx = search_inc * np.cos(this_bearing)
+            incy = search_inc * np.sin(this_bearing)
+
+            for j in range(0,n_steps):
+                if not FIRST_POINT:
+                    newx = x0 + j*incx
+                    newy = y0 + j*incy
+                    new_point = Point(newx,newy)
+
+                    for k in range(0,len(multiline_df)):
+                        if not FIRST_POINT:
+                            this_new_line = this_multiline[k]
+                            dist = this_new_line.distance(new_point)
+                            if dist < threshold:
+                                FIRST_POINT = True
+                                FirstPoint = new_point
+                                FirstPoint_dist = abs(this_point.distance(new_point))
+
+            incx = search_inc * np.cos(this_bearing + np.pi)
+            incy = search_inc * np.sin(this_bearing + np.pi)
+
+            for j in range(0,n_steps):
+                if not SECOND_POINT:
+                    newx = x0 + j*incx
+                    newy = y0 + j*incy
+                    new_point = Point(newx,newy)
+
+                    for k in range(0,len(multiline_df)):
+                        if not SECOND_POINT:
+                            this_new_line = this_multiline[k]
+                            dist = this_new_line.distance(new_point)
+                            if dist < threshold:
+                                SECOND_POINT = True
+                                SecondPoint = new_point
+                                SecondPoint_dist = abs(this_point.distance(new_point))
+
+            if FIRST_POINT:
+                if SECOND_POINT:
+                    if SecondPoint_dist < FirstPoint_dist:
+                        points.append(SecondPoint)
+                        labels.append(this_label)
+                        distances.append(SecondPoint_dist)
+                    else:
+                        points.append(FirstPoint)
+                        labels.append(this_label)
+                        distances.append(FirstPoint_dist)
+                else:
+                    points.append(FirstPoint)
+                    labels.append(this_label)
+                    distances.append(FirstPoint_dist)
+            else:
+                if SECOND_POINT:
+                    points.append(SecondPoint)
+                    labels.append(this_label)
+                    distances.append(SecondPoint_dist)
+
+
+            print(this_label)
+            #time.sleep(0.001)
+            percent = int(100 * (i+1) / len(points_df))
+            self.countChanged.emit(percent)
+        
+
+        d = {'Names': labels, 'Distance': distances, 'geometry': points}
+        projected_points = gpd.GeoDataFrame(d, crs=multiline_crs)
+
+        outfile_crs = outfile_proj.authid()
+
+        if multiline_crs != outfile_proj:
+            projected_points = projected_points.to_crs(outfile_crs)
+
+        projected_points.to_file(outfile)
+
+        if load_projected:
+            new_projected_points_layer = QgsVectorLayer(outfile, os.path.splitext(os.path.basename(outfile))[0], "ogr")
+            QgsProject.instance().addMapLayer(new_projected_points_layer)
+
+             
+        self.finished.emit()
+
 
 
 class UrbanSeismic:
@@ -179,6 +379,138 @@ class UrbanSeismic:
                 action)
             self.iface.removeToolBarIcon(action)
 
+    def place_points(self):
+        # Select a line layer, get its crs and convert to geopandas
+        selected_layer = self.dlg.mMapLayerComboBox.currentLayer()
+        selected_layer_CRS = selected_layer.crs().authid()
+        features = selected_layer.getFeatures()
+        df = gpd.GeoDataFrame.from_features(features, crs = selected_layer_CRS)
+
+        # collect other parameters from dialog
+        start_number = int(self.dlg.start_number_spinBox.text())        # start number for labelling    
+        increment = int(self.dlg.increment_spinBox.text())              # increment for labelling
+        spacing = float(self.dlg.point_spacing_doubleSpinBox.text())    # point spacing
+        shift = float(self.dlg.shift_doubleSpinBox.text())              # inline shift from start of the line
+        file_out = self.dlg.mQgsFileWidget.filePath()                   # note: the file path includes the name of the file itself - not just the location to the file
+        file_out_proj = self.dlg.mQgsProjectionSelectionWidget.crs()    # desired crs for output file
+        load_points = self.dlg.load_checkBox.isChecked()
+        
+        multiline = df["geometry"][0]
+        for line in multiline.geoms:
+            xy = np.asarray(line.coords.xy).T
+            n_points = xy.shape[0]
+                
+            left = 0    # leftover after placing points on segment
+            x_points = []    
+            y_points = []
+            thetas = []         # angle of segment (rad from x axis)
+            for i in range(0,n_points-1):
+                seg_len = np.sqrt(np.power((xy[i,0] - xy[i+1,0]),2) + np.power((xy[i,1] -xy[i+1,1]),2))
+                theta = np.arctan2(xy[i+1,1] -xy[i,1], xy[i+1,0] -xy[i,0])
+                    
+                if i == 0:
+                    x_points.append(xy[i,0] + shift * np.cos(theta))
+                    y_points.append(xy[i,1] + shift * np.sin(theta))
+                        
+                if (seg_len + left) > spacing:
+                    seg_n_points = int(np.floor((seg_len -shift +left) / spacing))
+                    newleft = seg_len + left - seg_n_points * spacing
+                        
+                    for j in range(0,seg_n_points):
+                            
+                        if j == 0:
+                            dx = (spacing + shift - left) * np.cos(theta)
+                            dy = (spacing + shift - left) * np.sin(theta)
+                        else:
+                            dx = (spacing + shift - left) * np.cos(theta) + j * spacing * np.cos(theta)
+                            dy = (spacing + shift - left) * np.sin(theta) + j * spacing * np.sin(theta)
+                            
+                        x_points.append(xy[i,0] + dx)
+                        y_points.append(xy[i,1] + dy)
+                        thetas.append(theta)
+                    left = np.copy(newleft)
+                        
+                else:
+                    left = left + seg_len
+                            
+        points = [Point(sx,sy) for sx,sy in zip(x_points,y_points)]
+        thetas.append(0)
+        npoints = len(points)
+        labels = np.arange(start_number,start_number + npoints * increment,increment)
+        d = {'Name': labels, 'angle': thetas,'geometry': points}
+        new_df = gpd.GeoDataFrame(d)
+        new_df.crs = df.crs
+            
+        # if the crs needs to be altered
+        if new_df.crs != file_out_proj.authid():
+            new_df = new_df.to_crs(file_out_proj.authid())      # project to new crs
+            
+        # save to file  
+        new_df.to_file(file_out)
+            
+        # load in qgis if requested
+        if load_points:
+            new_points_layer = QgsVectorLayer(file_out, os.path.splitext(os.path.basename(file_out))[0], "ogr")
+            QgsProject.instance().addMapLayer(new_points_layer)
+
+    def project_points(self):
+        global proj_dict
+        proj_dict['selected_point_layer'] = self.dlg.points_layer_mMapLayerComboBox.currentLayer()
+        proj_dict['selected_multiline_layer'] = self.dlg.multiline_layer_mMapLayerComboBox.currentLayer()
+        proj_dict['max_dist'] = self.dlg.max_dist_doubleSpinBox.value()
+        proj_dict['search_inc'] = self.dlg.inc_doubleSpinBox.value()
+        proj_dict['threshold'] = self.dlg.threshold_doubleSpinBox.value()
+        proj_dict['outfile'] = self.dlg.outfile_proj_points_mQgsFileWidget.filePath() 
+        proj_dict['proj_projected_points'] = self.dlg.proj_points_proj_mQgsProjectionSelectionWidget.crs()
+        proj_dict['load_points'] = self.dlg.load_proj_points_checkBox.isChecked()
+
+
+        self.thread = QThread()
+        self.projector = Projector()
+        self.projector.moveToThread(self.thread)
+        self.thread.started.connect(self.projector.run)
+        #self.projector.finished.connect(self.thread.quit)
+        self.projector.finished.connect(self.project_complete)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.projector.countChanged.connect(self.project_progress)
+        self.thread.start()
+
+    def project_progress(self,value):
+        self.dlg.progressBar.setValue(value)
+
+    def project_complete(self):
+        self.thread.quit()
+        time.sleep(1)
+        self.projector.deleteLater()
+
+    def cmp_calc(self):
+        global proj_dict
+
+        # get values from GUI and place them in global dictionary
+        proj_dict['sp_layer'] = self.dlg.sp_cmp_mMapLayerComboBox.currentLayer()
+        proj_dict['rp_layer'] = self.dlg.rp_cmp_mMapLayerComboBox.currentLayer()
+        proj_dict['cmp_offset'] = self.dlg.cmp_offset_doubleSpinBox.value()
+        proj_dict['cmp_file'] = self.dlg.cmp_file_mQgsFileWidget.filePath() 
+        proj_dict['cmp_proj'] = self.dlg.cmp_file_proj_mQgsProjectionSelectionWidget.crs()
+        proj_dict['load_cmp'] = self.dlg.cmp_load_checkBox.isChecked()
+
+        self.thread = QThread()
+        self.cmp = CMP()
+        self.cmp.moveToThread(self.thread)
+        self.thread.started.connect(self.cmp.run)
+        self.cmp.finished.connect(self.cmp_complete)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.cmp.countChanged.connect(self.cmp_progress)
+        self.thread.start()
+
+    def cmp_progress(self,value):
+        self.dlg.progressBar.setValue(value)
+
+    def cmp_complete(self):
+        self.thread.quit()
+        time.sleep(1)
+        self.cmp.deleteLater()
+
 
     def run(self):
         """Run method that performs all the real work"""
@@ -188,13 +520,18 @@ class UrbanSeismic:
         if self.first_start == True:
             self.first_start = False
             self.dlg = UrbanSeismicDialog()
+            self.dlg.mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
+            self.dlg.points_layer_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+            self.dlg.multiline_layer_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
+            self.dlg.sp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+            self.dlg.rp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+
+        # create actions
+        self.dlg.place_points_pushButton.clicked.connect(self.place_points)
+        self.dlg.project_points_pushButton.clicked.connect(self.project_points) 
+        self.dlg.cmp_calculate_pushButton.clicked.connect(self.cmp_calc) 
+
 
         # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+       
