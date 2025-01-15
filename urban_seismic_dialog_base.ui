@@ -46,9 +46,9 @@
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="start_number_spinBox">
+          <widget class="QDoubleSpinBox" name="start_number_spinBox">
            <property name="maximum">
-            <number>999999999</number>
+            <double>10000000000000.000000000000000</double>
            </property>
           </widget>
          </item>
@@ -782,7 +782,7 @@
           </size>
          </property>
          <property name="text">
-          <string>Export to Stryde CSV template only. </string>
+          <string>Export to Stryde CSV templates only. </string>
          </property>
          <property name="alignment">
           <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -811,7 +811,37 @@
           </widget>
          </item>
          <item>
-          <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_2"/>
+          <widget class="QgsMapLayerComboBox" name="rp_export_mMapLayerComboBox"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_34">
+         <item>
+          <widget class="QLabel" name="label_29">
+           <property name="minimumSize">
+            <size>
+             <width>150</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>150</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Line number</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="rp_line_export_spinBox">
+           <property name="minimum">
+            <number>1</number>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -837,7 +867,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="spinBox_2">
+          <widget class="QSpinBox" name="rp_spinBox">
            <property name="minimum">
             <number>1</number>
            </property>
@@ -867,7 +897,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="comboBox_2">
+          <widget class="QComboBox" name="rp_code_comboBox">
            <item>
             <property name="text">
              <string>G1</string>
@@ -904,7 +934,11 @@
           </widget>
          </item>
          <item>
-          <widget class="QgsFileWidget" name="mQgsFileWidget_2"/>
+          <widget class="QgsFileWidget" name="rp_export_file_mQgsFileWidget">
+           <property name="storageMode">
+            <enum>QgsFileWidget::SaveFile</enum>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -924,7 +958,7 @@
           </spacer>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton_2">
+          <widget class="QPushButton" name="rp_export_pushButton">
            <property name="text">
             <string>Export</string>
            </property>
@@ -967,7 +1001,37 @@
           </widget>
          </item>
          <item>
-          <widget class="QgsMapLayerComboBox" name="mMapLayerComboBox_3"/>
+          <widget class="QgsMapLayerComboBox" name="sp_export_mMapLayerComboBox"/>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_35">
+         <item>
+          <widget class="QLabel" name="label_30">
+           <property name="minimumSize">
+            <size>
+             <width>150</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>150</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Line number</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="sp_line_export_spinBox">
+           <property name="minimum">
+            <number>1</number>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -993,7 +1057,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="spinBox">
+          <widget class="QSpinBox" name="sp_shots_spinBox">
            <property name="minimum">
             <number>1</number>
            </property>
@@ -1023,7 +1087,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="comboBox">
+          <widget class="QComboBox" name="sp_code_comboBox">
            <item>
             <property name="text">
              <string>V1</string>
@@ -1059,7 +1123,11 @@
           </widget>
          </item>
          <item>
-          <widget class="QgsFileWidget" name="mQgsFileWidget_3"/>
+          <widget class="QgsFileWidget" name="sp_export_file_mQgsFileWidget">
+           <property name="storageMode">
+            <enum>QgsFileWidget::SaveFile</enum>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -1079,7 +1147,7 @@
           </spacer>
          </item>
          <item>
-          <widget class="QPushButton" name="pushButton">
+          <widget class="QPushButton" name="sp_export_pushButton">
            <property name="text">
             <string>Export</string>
            </property>

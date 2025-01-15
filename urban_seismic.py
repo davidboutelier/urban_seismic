@@ -213,7 +213,7 @@ class Projector(QObject):
             self.countChanged.emit(percent)
         
 
-        d = {'Names': labels, 'Distance': distances, 'geometry': points}
+        d = {'Name': labels, 'Distance': distances, 'geometry': points}
         projected_points = gpd.GeoDataFrame(d, crs=multiline_crs)
 
         outfile_crs = outfile_proj.authid()
@@ -387,7 +387,11 @@ class UrbanSeismic:
         df = gpd.GeoDataFrame.from_features(features, crs = selected_layer_CRS)
 
         # collect other parameters from dialog
-        start_number = int(self.dlg.start_number_spinBox.text())        # start number for labelling    
+        start_number = float(self.dlg.start_number_spinBox.text())        # start number for labelling  
+
+        if start_number.is_integer():
+            start_number = int(start_number) 
+
         increment = int(self.dlg.increment_spinBox.text())              # increment for labelling
         spacing = float(self.dlg.point_spacing_doubleSpinBox.text())    # point spacing
         shift = float(self.dlg.shift_doubleSpinBox.text())              # inline shift from start of the line
@@ -512,6 +516,65 @@ class UrbanSeismic:
         self.cmp.deleteLater()
 
 
+    def export_rp(self):
+        global proj_dict
+        proj_dict['rp_export_layer'] = self.dlg.rp_export_mMapLayerComboBox.currentLayer()
+        proj_dict['rp_export_file'] = self.dlg.rp_export_file_mQgsFileWidget.filePath()
+        proj_dict['rp_sensor_export'] = self.dlg.rp_spinBox.value()
+        proj_dict['rp_code_export'] = self.dlg.rp_code_comboBox.currentText()
+        proj_dict['rp_export_line'] = self.dlg.rp_line_export_spinBox.value()
+
+        selected_layer = proj_dict['rp_export_layer']
+        selected_layer_CRS = selected_layer.crs().authid()
+        features = selected_layer.getFeatures()
+        rp_export_df = gpd.GeoDataFrame.from_features(features, crs = selected_layer_CRS)
+
+        print(rp_export_df.head())
+
+        with open(proj_dict['rp_export_file'], 'w') as f:
+            f.write('Line,Point,Index,Code,Eastings,Northings,Elevation' + '\n')
+            for index, row in rp_export_df.iterrows():
+                this_point = row['geometry']
+                this_easting = str(this_point.x)
+                this_northing = str(this_point.y)
+
+                for sensor in range(1, proj_dict['rp_sensor_export']+1):    
+                    f.write(str(proj_dict['rp_export_line']) + ',' + str(row['Name']) + ','+ str(sensor) + ','+  proj_dict['rp_code_export'] + ',' + this_easting +',' + this_northing + ',0'  +'\n')
+                    percent  = (index+1)/len(rp_export_df) * 100
+                    self.dlg.progressBar.setValue(int(percent))
+            time.sleep(1)
+            self.dlg.progressBar.setValue(0)
+        
+        
+
+
+    def export_sp(self):
+        global proj_dict
+        proj_dict['sp_export_layer'] = self.dlg.sp_export_mMapLayerComboBox.currentLayer()
+        proj_dict['sp_export_file'] = self.dlg.sp_export_file_mQgsFileWidget.filePath()
+        proj_dict['sp_shots_export'] = self.dlg.sp_shots_spinBox.value()
+        proj_dict['sp_code_export'] = self.dlg.sp_code_comboBox.currentText()
+        proj_dict['sp_export_line'] = self.dlg.sp_line_export_spinBox.value()
+
+        selected_layer = proj_dict['sp_export_layer']
+        selected_layer_CRS = selected_layer.crs().authid()
+        features = selected_layer.getFeatures()
+        sp_export_df = gpd.GeoDataFrame.from_features(features, crs = selected_layer_CRS)
+
+        with open(proj_dict['sp_export_file'], 'w') as f:    
+            f.write('Line,Point,Index,Code,Eastings,Northings,Elevation,Swath(optional)' + '\n')
+            for index, row in sp_export_df.iterrows():
+                this_point = row['geometry']
+                this_easting = str(this_point.x)
+                this_northing = str(this_point.y)
+                for shot in range(1, proj_dict['sp_shots_export']+1):
+                    f.write(str(proj_dict['sp_export_line']) + ',' + str(row['Name']) + ','+ str(shot) + ','+  proj_dict['sp_code_export'] + ',' + this_easting +',' + this_northing + ',0,1'  +'\n')
+                    percent  = (index+1)/len(sp_export_df) * 100
+                    self.dlg.progressBar.setValue(int(percent))
+            time.sleep(1)
+            self.dlg.progressBar.setValue(0)
+
+
     def run(self):
         """Run method that performs all the real work"""
 
@@ -526,10 +589,16 @@ class UrbanSeismic:
             self.dlg.sp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg.rp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
 
+            self.dlg.sp_export_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+            self.dlg.rp_export_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
+
         # create actions
         self.dlg.place_points_pushButton.clicked.connect(self.place_points)
         self.dlg.project_points_pushButton.clicked.connect(self.project_points) 
         self.dlg.cmp_calculate_pushButton.clicked.connect(self.cmp_calc) 
+
+        self.dlg.rp_export_pushButton.clicked.connect(self.export_rp)
+        self.dlg.sp_export_pushButton.clicked.connect(self.export_sp)
 
 
         # show the dialog
