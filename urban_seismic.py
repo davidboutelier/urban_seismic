@@ -117,7 +117,6 @@ class Projector(QObject):
         search_inc = proj_dict['search_inc'] 
         threshold = proj_dict['threshold'] 
 
-
         multiline = proj_dict['selected_multiline_layer']
         multiline_features = multiline.getFeatures()
         multiline_crs = multiline.crs().authid()
@@ -128,16 +127,13 @@ class Projector(QObject):
         outfile_proj = proj_dict['proj_projected_points'] 
         load_projected = proj_dict['load_points']
 
-
         n_steps = int(max_dist/search_inc)
 
         points = []
         labels = []
         distances = []
 
-        print(points_df['angle'].iloc[-1])
-        points_df['angle'].iloc[-1] = points_df['angle'].iloc[-2]
-
+        points_df['angle'].iloc[-1] = points_df['angle'].iloc[-2] # last point orientation is undefined. Use the previous one
 
         for i in range(0,len(points_df)):
 
@@ -206,9 +202,6 @@ class Projector(QObject):
                     labels.append(this_label)
                     distances.append(SecondPoint_dist)
 
-
-            print(this_label)
-            #time.sleep(0.001)
             percent = int(100 * (i+1) / len(points_df))
             self.countChanged.emit(percent)
         
@@ -473,7 +466,6 @@ class UrbanSeismic:
         self.projector = Projector()
         self.projector.moveToThread(self.thread)
         self.thread.started.connect(self.projector.run)
-        #self.projector.finished.connect(self.thread.quit)
         self.projector.finished.connect(self.project_complete)
         self.thread.finished.connect(self.thread.deleteLater)
         self.projector.countChanged.connect(self.project_progress)
@@ -515,7 +507,6 @@ class UrbanSeismic:
         time.sleep(1)
         self.cmp.deleteLater()
 
-
     def export_rp(self):
         global proj_dict
         proj_dict['rp_export_layer'] = self.dlg.rp_export_mMapLayerComboBox.currentLayer()
@@ -545,8 +536,6 @@ class UrbanSeismic:
             time.sleep(1)
             self.dlg.progressBar.setValue(0)
         
-        
-
 
     def export_sp(self):
         global proj_dict
@@ -588,7 +577,6 @@ class UrbanSeismic:
             self.dlg.multiline_layer_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.LineLayer)
             self.dlg.sp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg.rp_cmp_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
-
             self.dlg.sp_export_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
             self.dlg.rp_export_mMapLayerComboBox.setFilters(QgsMapLayerProxyModel.PointLayer)
 
@@ -596,10 +584,8 @@ class UrbanSeismic:
         self.dlg.place_points_pushButton.clicked.connect(self.place_points)
         self.dlg.project_points_pushButton.clicked.connect(self.project_points) 
         self.dlg.cmp_calculate_pushButton.clicked.connect(self.cmp_calc) 
-
         self.dlg.rp_export_pushButton.clicked.connect(self.export_rp)
         self.dlg.sp_export_pushButton.clicked.connect(self.export_sp)
-
 
         # show the dialog
         self.dlg.show()
